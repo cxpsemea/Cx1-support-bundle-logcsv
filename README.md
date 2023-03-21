@@ -6,3 +6,6 @@ Usage:
 2. run: cx1logcsv.ps1 .\your_folder
 3. it will create a big .csv file with all of the .log files that had JSON format data, trying to split out into columns
 4. bon apetit!
+
+Requirements:
+  Install-Module powershell-yaml
