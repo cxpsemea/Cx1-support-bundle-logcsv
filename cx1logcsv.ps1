@@ -1,7 +1,14 @@
 ﻿param (
-    [Parameter(Position=0,mandatory=$true)]
-    [string]$path
+    [Parameter(Mandatory)]
+    $path,
+    $start = "1970-01-01 00:00:00", 
+    $end = "2030-01-01 00:00:00", #let's hope we don't need it by then
+    [bool]$errlog = $false
 )
+
+$startTime = (Get-Date -Date $start)
+$endTime = (Get-Date -Date $end)
+Write-Host "Running with options:`n`t`$path: $path (directory containing logs)`n`t`$start = $start (logs since time)`n`t`$end = $end (logs until time)`n`t`$errlog = $errlog (output unparsed data to file)"
 
 if ( -not (Test-Path -path $path) ) {
     Write-Host "Path $path does not exist."
@@ -52,6 +59,16 @@ function ParseInput( $line ) {
     }
     if ( $logtime -eq "" ) {
         $logtime = "$($js.ts)"
+    }
+
+    if ( $logtime -eq "" ) {
+        return ""
+    }
+
+    $logtime = FixTime $logtime
+
+    if ( $logtime -lt $startTime -or $logtime -gt $endTime ) {
+        return "skip"
     }
             
     $logapp = "$($js.app)"
@@ -117,8 +134,6 @@ function ParseInput( $line ) {
     if ( $logerr -ne $null ) {
         $logerr = $logerr.Replace( """", "'" )
     }
-
-    $logtime = FixTime $logtime
             
     return """$loglevel"";""$logtime"";""$logapp"";""$logmsg"";""$logerr"";""$logcorrelationId"";""$logstacktrace"";""$logextra"";"
 }
@@ -127,11 +142,18 @@ function ParseInput( $line ) {
 function ParseLogs() {
     Write-Host "Searching for all *.log files in $path"
     Write-Host " - Parsed log output will be in: $path.csv"
-    Write-Host " - Unparsed output will be in: $path-err.csv"
+    if ( $errlog ) {
+        Write-Host " - Unparsed output will be in: $path-err.csv"
+    } else {
+        Write-Host " - Unparsed output will summarized in $path-err.csv, but will not be written anywhere. Use argument `$errlog = `$true"
+    }
 
     "sep=;" | out-file "$path-err.csv"
 
-    $files = @{}
+    "sep=;" | out-file "$path.csv"
+    "file;level;time;app;msg;err;correlationId;stack;extra;" | Out-File "$path.csv" -Append
+
+    #$files = @{}
     $fileCount = 0
     $lineCount = 0
     $jsonLineCount = 0
@@ -146,64 +168,69 @@ function ParseLogs() {
         $file = $_.FullName.Replace( $pwd, "" )
         $file_svc = $_.BaseName
 
+        Write-Host " - $file ($($lines.Length) lines)"
+
         #if ( $file -match "ast-swagger*" ) {
         #if ( $jsonLineCount -lt 100 ) {
 
         $jsonLines = @()
 
-        $lastLine = ""
+        $current = 0
         $unparseable = 0
 
-        $lines | foreach-object {
-            if ($_.Length -gt 1) {
-                if ($_.SubString(0,1) -eq "{") {
-                    $jsonLineCount++
-                    if ($_.SubString($_.Length-1,1) -eq "}") {
-                        $line = $_.Replace( "scanId", "scanID" )
-                        $jsonLine = ParseInput $line
-                        $jsonLines += $jsonLine
-                    } else {
-                        Write-Host "Line isn't complete json? $_"
-                    }
-                                    #     time          request     status         host        useragent  
-                } elseif( $_ -match '^.*\[([^\]]+)\]\s+"([^"]+)"\s+(\d+)\s+\d+\s+"([^"]+)"\s+"([^"]+)".*' ) {
-                    $webLineCount++
-                    $logerr = [int]$Matches[3]
-                    $logmsg = $Matches[2]
-                    $logtime = $Matches[1]
-                    $loglevel = "info"
-                    if ( $logerr -ge 400 ) {
-                        $loglevel = "error"
-                    }
-                    $logcorrelationId = $Matches[4] #close enough
-                    $logtime = FixTime $logtime
+        if ( $lines.Length -gt 0 ) {
+            $lines | foreach-object {
+                $current++
+                if ( $current % 500 -eq 0 ) {
+                    Write-Host "   - $current / $($lines.Length)"
+                }
+                if ($_.Length -gt 1) {
+                    if ($_.SubString(0,1) -eq "{") {
+                        $jsonLineCount++
+                        if ($_.SubString($_.Length-1,1) -eq "}") {
+                            $line = $_.Replace( "scanId", "scanID" )
+                            $jsonLine = ParseInput $line
+                            if ( $jsonLine -eq "" ) {
+                                if ( $errlog ) {
+                                    "$file;$_" | out-file "$path-err.csv" -Append
+                                }
+                            } elseif ( $jsonLine -ne "skip" ) {
+                                "$file;$jsonLine"| out-file "$path.csv" -Append 
+                            }
+                        } else {
+                            Write-Host "Line isn't complete json? $_"
+                        }
+                                        #     time          request     status         host        useragent  
+                    } elseif( $_ -match '^.*\[([^\]]+)\]\s+"([^"]+)"\s+(\d+)\s+\d+\s+"([^"]+)"\s+"([^"]+)".*' ) {
+                        $webLineCount++
+                        $logerr = [int]$Matches[3]
+                        $logmsg = $Matches[2]
+                        $logtime = $Matches[1]
+                        $loglevel = "info"
+                        if ( $logerr -ge 400 ) {
+                            $loglevel = "error"
+                        }
+                        $logcorrelationId = $Matches[4] #close enough
+                        $logtime = FixTime $logtime
 
-                    $jsonLines += """$loglevel"";""$logtime"";""$logapp"";""$logmsg"";""$logerr"";""$logcorrelationId"";""$logstacktrace"";""$logextra"";"
-                } else {
-                    "$file;$_" | out-file "$path-err.csv" -Append
-                    $unparseable ++
+                        "$file;""$loglevel"";""$logtime"";""$logapp"";""$logmsg"";""$logerr"";""$logcorrelationId"";""$logstacktrace"";""$logextra"";" | out-file "$path.csv" -Append 
+                    } else {
+                        if ( $errlog ) {
+                            "$file;$_" | out-file "$path-err.csv" -Append
+                        }
+                        $unparseable ++
+                    }
                 }
             }
+
+            if ( $unparseable -gt 0 -and -not $errlog ) {
+                "$file;$unparseable lines" | out-file "$path-err.csv" -Append
+            }
         }
-        
-        $files[$file] = $jsonLines
-    
-        #} 
     }
 
     Write-Host "Read $fileCount files with $lineCount lines of which $jsonLineCount were json & $webLineCount were web text logs"
 
-    "sep=;" | out-file "$path.csv"
-
-    "file;level;time;app;msg;err;correlationId;stack;extra;" | Out-File "$path.csv" -Append
-
-    $files.Keys | foreach-object {
-        $k = $_
-        $files[$k] | foreach-object {
-            $js = $_
-            "$k;$js;" | out-file "$path.csv" -Append 
-        }
-    }
 }
 
 function ParseYaml() {
@@ -212,7 +239,8 @@ function ParseYaml() {
     $astVersion = ""
 
     Get-ChildItem -Path .\ -Include "*.yaml" -Recurse | foreach-object {
-        $file = $_.FullName
+        $file = $_.FullName.Replace( $pwd, "" )
+        Write-Host " - $file"
         if ( $file -match 'microservices\.ast\.checkmarx\.com.*ast\.yaml' ) {
             $yaml = ConvertFrom-Yaml (Get-Content -Path $_.FullName -Raw)
             $yaml | foreach-object {
