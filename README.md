@@ -16,3 +16,4 @@ Usage:
 
 Requirements:
   Install-Module powershell-yaml
+  Note- this requirement is temporarily unrequired since ConvertFrom-Yaml was hanging on some ast.yaml files sometimes. Currently disabled and replaced by plain text parsing (to get the current AST_VERSION)
