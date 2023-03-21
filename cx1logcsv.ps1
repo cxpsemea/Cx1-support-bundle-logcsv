@@ -3,12 +3,13 @@
     $path,
     $start = "1970-01-01 00:00:00", 
     $end = "2030-01-01 00:00:00", #let's hope we don't need it by then
-    [bool]$errlog = $false
+    [bool]$errlog = $false,
+    $filter = ""
 )
 
 $startTime = (Get-Date -Date $start -Format "yyyy-MM-dd hh:mm:ss")
 $endTime = (Get-Date -Date $end -Format "yyyy-MM-dd hh:mm:ss")
-Write-Host "Running with options:`n`t`$path: $path (directory containing logs)`n`t`$start = $start (logs since time)`n`t`$end = $end (logs until time)`n`t`$errlog = $errlog (output unparsed data to file)"
+Write-Host "Running with options:`n`t`$path: $path (directory containing logs)`n`t`$start = $start (logs since time)`n`t`$end = $end (logs until time)`n`t`$errlog = $errlog (output unparsed data to file)`n`t`$filter = $filter (regex to match log filenames for inclusion)"
 
 if ( -not (Test-Path -path $path) ) {
     Write-Host "Path $path does not exist."
@@ -158,71 +159,74 @@ function ParseLogs() {
 
     Get-ChildItem -Path .\ -Include "*.log" -Recurse | foreach-object {
         $fileCount ++
-
-        $lines = Get-Content -Path $_.FullName
-        $lineCount += $lines.Length
     
         $file = $_.FullName.Replace( $pwd, "" )
         $file_svc = $_.BaseName
 
-        Write-Host " - $file ($($lines.Length) lines)"
-
-        #if ( $file -match "ast-swagger*" ) {
-        #if ( $jsonLineCount -lt 100 ) {
-
-        $jsonLines = @()
-
         $current = 0
         $unparseable = 0
 
-        if ( $lines.Length -gt 0 ) {
-            $lines | foreach-object {
-                $current++
-                if ( $current % 500 -eq 0 ) {
-                    Write-Host "   - $current / $($lines.Length)"
-                }
-                if ($_.Length -gt 1) {
-                    if ($_.SubString(0,1) -eq "{") {
-                        $jsonLineCount++
-                        if ($_.SubString($_.Length-1,1) -eq "}") {
-                            $line = $_.Replace( "scanId", "scanID" )
-                            $jsonLine = ParseInput $line
-                            if ( $jsonLine -eq "" ) {
-                                if ( $errlog ) {
-                                    "$file;$_" | out-file "$path-err.csv" -Append
-                                }
-                            } elseif ( $jsonLine -ne "skip" ) {
-                                "$file;$jsonLine"| out-file "$path.csv" -Append 
-                            }
-                        } else {
-                            Write-Host "Line isn't complete json? $_"
-                        }
-                                        #     time          request     status         host        useragent  
-                    } elseif( $_ -match '^.*\[([^\]]+)\]\s+"([^"]+)"\s+(\d+)\s+\d+\s+"([^"]+)"\s+"([^"]+)".*' ) {
-                        $webLineCount++
-                        $logerr = [int]$Matches[3]
-                        $logmsg = $Matches[2]
-                        $logtime = $Matches[1]
-                        $loglevel = "info"
-                        if ( $logerr -ge 400 ) {
-                            $loglevel = "error"
-                        }
-                        $logcorrelationId = $Matches[4] #close enough
-                        $logtime = FixTime $logtime
+        if ( $filter -eq "" -or $file -match $filter ) {
 
-                        "$file;""$loglevel"";""$logtime"";""$logapp"";""$logmsg"";""$logerr"";""$logcorrelationId"";""$logstacktrace"";""$logextra"";" | out-file "$path.csv" -Append 
-                    } else {
-                        if ( $errlog ) {
-                            "$file;$_" | out-file "$path-err.csv" -Append
+            $lines = Get-Content -Path $_.FullName
+            $lineCount += $lines.Length
+            Write-Host " - $file ($($lines.Length) lines)"
+
+            if ( $lines.Length -gt 0 ) {
+                $lines | foreach-object {
+                    $current++
+                    if ( $current % 500 -eq 0 ) {
+                        Write-Host "   - $current / $($lines.Length)"
+                    }
+                    if ($_.Length -gt 1) {
+                        if ($_.SubString(0,1) -eq "{") {
+                            $jsonLineCount++
+                            if ($_.SubString($_.Length-1,1) -eq "}") {
+                                $line = $_.Replace( "scanId", "scanID" )
+                                $jsonLine = ParseInput $line
+                                if ( $jsonLine -eq "" ) {
+                                    if ( $errlog ) {
+                                        "$file;$_" | out-file "$path-err.csv" -Append
+                                    }
+                                } elseif ( $jsonLine -ne "skip" ) {
+                                    "$file;$jsonLine"| out-file "$path.csv" -Append 
+                                }
+                            } else {
+                                Write-Host "Line isn't complete json? $_"
+                            }
+                                            #     time          request     status         host        useragent  
+                        } elseif( $_ -match '^.*\[([^\]]+)\]\s+"([^"]+)"\s+(\d+)\s+\d+\s+"([^"]+)"\s+"([^"]+)".*' ) {
+                            $webLineCount++
+                            $logerr = [int]$Matches[3]
+                            $logmsg = $Matches[2]
+                            $logtime = $Matches[1]
+                            $loglevel = "info"
+                            if ( $logerr -ge 400 ) {
+                                $loglevel = "error"
+                            }
+                            $logcorrelationId = $Matches[4] #close enough
+                            $logtime = FixTime $logtime
+    
+                            if ( [datetime]$logtime -ge [datetime]$startTime -and [datetime]$logtime -le [datetime]$endTime ) {        
+                                "$file;""$loglevel"";""$logtime"";""$logapp"";""$logmsg"";""$logerr"";""$logcorrelationId"";""$logstacktrace"";""$logextra"";" | out-file "$path.csv" -Append 
+                            }
+
+                            
+                        } else {
+                            if ( $errlog ) {
+                                "$file;$_" | out-file "$path-err.csv" -Append
+                            }
+                            $unparseable ++
                         }
-                        $unparseable ++
                     }
                 }
-            }
 
-            if ( $unparseable -gt 0 -and -not $errlog ) {
-                "$file;$unparseable lines" | out-file "$path-err.csv" -Append
+                if ( $unparseable -gt 0 -and -not $errlog ) {
+                    "$file;$unparseable lines" | out-file "$path-err.csv" -Append
+                }
             }
+        } else {
+            Write-Host " - $file (skipped due to filter argument)"
         }
     }
 
