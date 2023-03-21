@@ -6,8 +6,8 @@
     [bool]$errlog = $false
 )
 
-$startTime = (Get-Date -Date $start)
-$endTime = (Get-Date -Date $end)
+$startTime = (Get-Date -Date $start -Format "yyyy-MM-dd hh:mm:ss")
+$endTime = (Get-Date -Date $end -Format "yyyy-MM-dd hh:mm:ss")
 Write-Host "Running with options:`n`t`$path: $path (directory containing logs)`n`t`$start = $start (logs since time)`n`t`$end = $end (logs until time)`n`t`$errlog = $errlog (output unparsed data to file)"
 
 if ( -not (Test-Path -path $path) ) {
@@ -24,21 +24,17 @@ $emptyJSON = @"
 function FixTime( $time ) {
     # why is this necessary
     if ( $time -match '(\d+/\w+/\d+):(\d+:\d+:\d+).*' ) {
-        return "$($Matches[1]) $($Matches[2])"
-    }
-    if ( $time -match '(\d+\-\d+\-\d+)T(\d+:\d+:\d+.\d+)Z' ) {
-        return "$($Matches[1]) $($Matches[2])"
-    }
-    if ( $time -match '(\d+\-\d+\-\d+)T(\d+:\d+:\d+)Z' ) {
-        return "$($Matches[1]) $($Matches[2])"
-    }
-    if ( $time -match '(\d+\-\d+\-\d+)T(\d+:\d+:\d+)\+.*' ) {
-        return "$($Matches[1]) $($Matches[2])"
-    }
-    if ( $time -match '\d+\.\d+' ) {
+        $time = "$($Matches[1]) $($Matches[2])"
+    } elseif ( $time -match '(\d+\-\d+\-\d+)T(\d+:\d+:\d+.\d+)Z' ) {
+        $time = "$($Matches[1]) $($Matches[2])"
+    } elseif ( $time -match '(\d+\-\d+\-\d+)T(\d+:\d+:\d+)Z' ) {
+        $time = "$($Matches[1]) $($Matches[2])"
+    } elseif ( $time -match '(\d+\-\d+\-\d+)T(\d+:\d+:\d+)\+.*' ) {
+        $time = "$($Matches[1]) $($Matches[2])"
+    } elseif ( $time -match '\d+\.\d+' ) {
         return Get-Date -Date ((Get-Date -Date "01-01-1970") + ([System.TimeSpan]::FromSeconds($time))) -Format "yyyy-MM-dd hh:mm:ss"
     }
-    return $time
+    return (Get-Date -Date $time -Format "yyyy-MM-dd hh:mm:ss")
 }
 
 function ParseInput( $line ) {
@@ -66,8 +62,9 @@ function ParseInput( $line ) {
     }
 
     $logtime = FixTime $logtime
-
-    if ( $logtime -lt $startTime -or $logtime -gt $endTime ) {
+    
+    if ( [datetime]$logtime -lt [datetime]$startTime -or [datetime]$logtime -gt [datetime]$endTime ) {        
+        #Write-Host " - skip $logtime not in [ $startTime, $endTime ]"
         return "skip"
     }
             
