@@ -7,8 +7,8 @@
     $filter = ""
 )
 
-$startTime = (Get-Date -Date $start -Format "yyyy-MM-dd hh:mm:ss")
-$endTime = (Get-Date -Date $end -Format "yyyy-MM-dd hh:mm:ss")
+$startTime = (Get-Date -Date $start -Format "yyyy-MM-dd HH:mm:ss")
+$endTime = (Get-Date -Date $end -Format "yyyy-MM-dd HH:mm:ss")
 
 if ( $path.SubString( $path.Length - 1, 1 ) -eq "\" ) {
     $path = $path.SubString( 0, $path.Length-1 )
@@ -38,9 +38,9 @@ function FixTime( $time ) {
     } elseif ( $time -match '(\d+\-\d+\-\d+)T(\d+:\d+:\d+)\+.*' ) {
         $time = "$($Matches[1]) $($Matches[2])"
     } elseif ( $time -match '\d+\.\d+' ) {
-        return Get-Date -Date ((Get-Date -Date "01-01-1970") + ([System.TimeSpan]::FromSeconds($time))) -Format "yyyy-MM-dd hh:mm:ss"
+        return Get-Date -Date ((Get-Date -Date "01-01-1970") + ([System.TimeSpan]::FromSeconds($time))) -Format "yyyy-MM-dd HH:mm:ss"
     }
-    return (Get-Date -Date $time -Format "yyyy-MM-dd hh:mm:ss")
+    return (Get-Date -Date $time -Format "yyyy-MM-dd HH:mm:ss")
 }
 
 function ParseInput( $line ) {
