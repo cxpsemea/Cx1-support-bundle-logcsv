@@ -109,11 +109,21 @@ Get-ChildItem -Path .\ -Include "*.log" -Recurse | foreach-object {
             }
 
             if ( $logapp -eq "" ) {
-                Write-Host "Empty logapp for: $js"
+                #Write-Host "Empty logapp for: $js"
                 $logapp = $file_svc
             }
 
-            $jsonLines += "$loglevel;$logtime;$logapp;""$logmsg"";""$logerr"";""$logcorrelationId"";""$logstacktrace"";""$logextra"";"
+            if ( $logmsg -ne $null ) {
+                $logmsg = $logmsg.Replace( """", "'" )
+            }
+            if ( $logstacktrace -ne $null ) {
+                $logstacktrace = $logstacktrace.Replace( """", "'" )
+            }
+            if ( $logerr -ne $null ) {
+                $logerr = $logerr.Replace( """", "'" )
+            }
+
+            $jsonLines += """$loglevel"";""$logtime"";""$logapp"";""$logmsg"";""$logerr"";""$logcorrelationId"";""$logstacktrace"";""$logextra"";"
             
         }
     }
