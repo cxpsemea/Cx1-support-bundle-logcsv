@@ -239,6 +239,49 @@ function ParseLogs() {
 
 }
 
+function GetVersionInfo( $file ) {
+    $lines = Get-Content -Path $file
+
+    $created = ""
+    $name = ""
+    $key = ""
+    $astVersion = "Unknown"
+
+    $lines | foreach-object {
+        $line = $_
+        if ( $line -match '\s+name: (.*)' ) {
+            $name = $Matches[1]
+        } elseif ( $line -match '\s+creationTimestamp: "(.*)"' ) {
+            $created = $Matches[1]
+        } elseif ( $line -match '.* AST_VERSION.*' ) {
+            $key = 'AST_VERSION'
+        } elseif ( $line -match '\s+value: ([0-9.]+)' ) {
+            if ( $key -eq 'AST_VERSION' -and $name -eq 'ast-core-host-webapp' ) {
+                $astVersion = "$($Matches[1]) created $created"
+            }
+        } 
+    }
+
+    return $astVersion
+}
+
+#this code chokes on the yaml file sometimes?
+function GetVersionInfo_yaml( $file ) {
+    $yaml = ConvertFrom-Yaml (Get-Content -Path $_.FullName -Raw)
+
+    $yaml | foreach-object {
+        $obj = $_
+        if ( $obj.metadata.name -eq "ast-core-host-webapp" ) {
+            $obj.spec.envirmentVariablesUnencrypted | foreach-object {
+                if ( $_.Key -eq 'AST_VERSION' ) {
+                    $astVersion = "$($_.Value) created $($obj.metadata.creationTimestamp)"
+                }
+            }
+                    
+        }
+    }
+}
+
 function ParseYaml() {
     Write-Host "Searching for *.yaml in $path"
 
@@ -248,18 +291,9 @@ function ParseYaml() {
         $file = $_.FullName.Replace( $pwd, "" )
         Write-Host " - $file"
         if ( $file -match 'microservices\.ast\.checkmarx\.com.*ast\.yaml' ) {
-            $yaml = ConvertFrom-Yaml (Get-Content -Path $_.FullName -Raw)
-            $yaml | foreach-object {
-                $obj = $_
-                if ( $obj.metadata.name -eq "ast-core-host-webapp" ) {
-                    $obj.spec.envirmentVariablesUnencrypted | foreach-object {
-                        if ( $_.Key -eq 'AST_VERSION' ) {
-                            $astVersion = "$($_.Value) created $($obj.metadata.creationTimestamp)"
-                        }
-                    }
-                    
-                }
-            }
+            Write-Host "   - Parsing file to get AST version"
+            
+            $astVersion = GetVersionInfo $_.FullName 
         }
     }
 
