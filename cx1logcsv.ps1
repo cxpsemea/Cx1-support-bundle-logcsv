@@ -27,7 +27,7 @@ Get-ChildItem -Path .\ -Include "*.log" -Recurse | foreach-object {
     $file = $_.FullName.Replace( $pwd, "" )
     $file_svc = $_.BaseName
 
-    #if ( $file -match "static*" ) {
+    #if ( $file -match "project*" ) {
     #if ( $jsonLineCount -lt 100 ) {
 
     $jsonLines = @()
@@ -44,8 +44,9 @@ Get-ChildItem -Path .\ -Include "*.log" -Recurse | foreach-object {
             }
 
             $logtime = "$($js.time)"
+            
             if ( $logtime -eq "" ) {
-                $logtime = "$($js['@timestamp'])"
+                $logtime = "$($js.'@timestamp')"
             }
             if ( $logtime -eq "" ) {
                 $logtime = "$($js.timestamp)"
@@ -96,7 +97,7 @@ Get-ChildItem -Path .\ -Include "*.log" -Recurse | foreach-object {
             }
 
 
-            $trimmed = $js | Select-Object -Property * -ExcludeProperty level,time,appName,msg,err,correlationId,stacktrace,app,issuingService,componentName,message,error,serviceName,`@timestamp,timestamp,ts,name,Namespace
+            $trimmed = $js | Select-Object -Property * -ExcludeProperty level,time,appName,msg,err,correlationId,stacktrace,app,issuingService,componentName,message,error,serviceName,`@timestamp,timestamp,ts,name,Namespace,status
 
             $logextra = ($trimmed | ConvertTo-Json).Replace( "`"", "'" )
             if ( $logextra -eq @"
@@ -123,6 +124,7 @@ Get-ChildItem -Path .\ -Include "*.log" -Recurse | foreach-object {
                 $logerr = $logerr.Replace( """", "'" )
             }
 
+            
             $jsonLines += """$loglevel"";""$logtime"";""$logapp"";""$logmsg"";""$logerr"";""$logcorrelationId"";""$logstacktrace"";""$logextra"";"
             
         }
@@ -131,7 +133,7 @@ Get-ChildItem -Path .\ -Include "*.log" -Recurse | foreach-object {
 
     $files[$file] = $jsonLines
     
-    #}  
+    #} 
 }
 
 Write-Host "Read $fileCount files with $lineCount lines of which $jsonLineCount were json"
