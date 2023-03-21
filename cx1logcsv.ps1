@@ -9,6 +9,11 @@
 
 $startTime = (Get-Date -Date $start -Format "yyyy-MM-dd hh:mm:ss")
 $endTime = (Get-Date -Date $end -Format "yyyy-MM-dd hh:mm:ss")
+
+if ( $path.SubString( $path.Length - 1, 1 ) -eq "\" ) {
+    $path = $path.SubString( 0, $path.Length-1 )
+}
+
 Write-Host "Running with options:`n`t`$path: $path (directory containing logs)`n`t`$start = $start (logs since time)`n`t`$end = $end (logs until time)`n`t`$errlog = $errlog (output unparsed data to file)`n`t`$filter = $filter (regex to match log filenames for inclusion)"
 
 if ( -not (Test-Path -path $path) ) {
